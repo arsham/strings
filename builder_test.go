@@ -6,9 +6,25 @@ package strings_test
 
 import (
 	"bytes"
-	. "strings"
+	"fmt"
+	"math/rand"
 	"testing"
+
+	. "github.com/arsham/strings"
 )
+
+const N = 10 // make this bigger for a larger (and slower) test
+// const N = 10000       // make this bigger for a larger (and slower) test
+var testString string // test data for write tests
+var testBytes []byte  // test data; same as testString but as a slice.
+
+func init() {
+	testBytes = make([]byte, N)
+	for i := 0; i < N; i++ {
+		testBytes[i] = 'a' + byte(i%26)
+	}
+	testString = string(testBytes)
+}
 
 func check(t *testing.T, b *Builder, want string) {
 	t.Helper()
@@ -347,4 +363,134 @@ func BenchmarkBuildString_ByteBuffer(b *testing.B) {
 			sinkS = buf.String()
 		}
 	})
+}
+
+//
+// Tests for added functionalities. Mostly copied from bytes.Buffer, because the
+// functionalities mostly match.
+//
+
+// Verify that contents of b match the string s.
+func checkRead(t *testing.T, testname string, b *Builder, s string) {
+	bytes := b.Bytes()
+	str := b.String()
+	if b.Len() != len(str) {
+		t.Errorf("%s: b.Len() == %d, len(b.String()) == %d", testname, b.Len(), len(str))
+	}
+	if string(bytes) != s {
+		t.Errorf("%s: string(b.Bytes()) == %q, s == %q", testname, string(bytes), s)
+	}
+}
+
+// Fill b through n writes of string fus.
+// The initial contents of b corresponds to the string s;
+// the result is the final contents of b returned as a string.
+func fillString(t *testing.T, testname string, b *Builder, s string, n int, fus string) string {
+	checkRead(t, testname+" (fill 1)", b, s)
+	for ; n > 0; n-- {
+		m, err := b.WriteString(fus)
+		if m != len(fus) {
+			t.Errorf(testname+" (fill 2): m == %d, expected %d", m, len(fus))
+		}
+		if err != nil {
+			t.Errorf(testname+" (fill 3): err should always be nil, found err == %s", err)
+		}
+		s += fus
+		checkRead(t, testname+" (fill 4)", b, s)
+	}
+	return s
+}
+
+// Fill b through n writes of byte slice fub.
+// The initial contents of b corresponds to the string s;
+// the result is the final contents of b returned as a string.
+func fillBytes(t *testing.T, testname string, b *Builder, s string, n int, fub []byte) string {
+	checkRead(t, testname+" (fill 1)", b, s)
+	for ; n > 0; n-- {
+		m, err := b.Write(fub)
+		if m != len(fub) {
+			t.Errorf(testname+" (fill 2): m == %d, expected %d", m, len(fub))
+		}
+		if err != nil {
+			t.Errorf(testname+" (fill 3): err should always be nil, found err == %s", err)
+		}
+		s += string(fub)
+		checkRead(t, testname+" (fill 4)", b, s)
+	}
+	return s
+}
+
+// Empty b through repeated reads into fub.
+// The initial contents of b corresponds to the string s.
+func empty(t *testing.T, testname string, b *Builder, s string, fub []byte) {
+	checkRead(t, testname+" (empty 1)", b, s)
+
+	for {
+		n, err := b.Read(fub)
+		if n == 0 {
+			break
+		}
+		if err != nil {
+			t.Errorf(testname+" (empty 2): err should always be nil, found err == %s", err)
+		}
+		s = s[n:]
+		checkRead(t, testname+" (empty 3)", b, s)
+	}
+
+	checkRead(t, testname+" (empty 4)", b, "")
+}
+
+func TestMixedReadsAndWrites(t *testing.T) {
+	var b Builder
+	s := ""
+	for i := 0; i < 50; i++ {
+		wlen := rand.Intn(len(testString))
+		testName := fmt.Sprintf("i=%d: TestMixedReadsAndWrites (1)", i)
+		if i%2 == 0 {
+			s = fillString(t, testName, &b, s, 1, testString[0:wlen])
+		} else {
+			s = fillBytes(t, testName, &b, s, 1, testBytes[0:wlen])
+		}
+
+		rlen := rand.Intn(len(testString))
+		fub := make([]byte, rlen)
+		n, _ := b.Read(fub)
+		s = s[n:]
+	}
+	empty(t, "TestMixedReadsAndWrites (2)", &b, s, make([]byte, b.Len()))
+}
+
+// Was a bug: used to give EOF reading empty slice at EOF.
+func TestReadEmptyAtEOF(t *testing.T) {
+	b := new(Builder)
+	slice := make([]byte, 0)
+	n, err := b.Read(slice)
+	if err != nil {
+		t.Errorf("read error: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("wrong count; got %d want 0", n)
+	}
+}
+
+func TestLargeByteReads(t *testing.T) {
+	var b Builder
+	for i := 3; i < 30; i += 3 {
+		s := fillBytes(t, "TestLargeReads (1)", &b, "", 5, testBytes[0:len(testBytes)/i])
+		empty(t, "TestLargeReads (2)", &b, s, make([]byte, len(testString)))
+	}
+	checkRead(t, "TestLargeByteReads (3)", &b, "")
+}
+
+// From Issue 5154.
+func BenchmarkBuilderNotEmptyWriteRead(b *testing.B) {
+	buf := make([]byte, 1024)
+	for i := 0; i < b.N; i++ {
+		var b Builder
+		b.Write(buf[0:1])
+		for i := 0; i < 5<<10; i++ {
+			b.Write(buf)
+			b.Read(buf)
+		}
+	}
 }

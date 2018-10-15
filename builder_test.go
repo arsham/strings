@@ -1,7 +1,3 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package strings_test
 
 import (
@@ -13,8 +9,7 @@ import (
 	. "github.com/arsham/strings"
 )
 
-const N = 10 // make this bigger for a larger (and slower) test
-// const N = 10000       // make this bigger for a larger (and slower) test
+const N = 10000       // make this bigger for a larger (and slower) test
 var testString string // test data for write tests
 var testBytes []byte  // test data; same as testString but as a slice.
 
@@ -27,7 +22,6 @@ func init() {
 }
 
 func check(t *testing.T, b *Builder, want string) {
-	t.Helper()
 	got := b.String()
 	if got != want {
 		t.Errorf("String: got %#q; want %#q", got, want)
@@ -185,6 +179,22 @@ func TestBuilderWriteByte(t *testing.T) {
 		t.Error(err)
 	}
 	check(t, &b, "a\x00")
+}
+
+func TestBuilderWriteBytes(t *testing.T) {
+	var b Builder
+	input := []byte("abcd")
+	n, err := b.WriteBytes(input)
+	if err != nil {
+		t.Error(err)
+	}
+	if n != len(input) {
+		t.Errorf("input=%q, got %d, want %d", input, n, len(input))
+	}
+	if err := b.WriteByte(0); err != nil {
+		t.Error(err)
+	}
+	check(t, &b, "abcd\x00")
 }
 
 func TestBuilderAllocs(t *testing.T) {

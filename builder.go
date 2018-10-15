@@ -1,7 +1,3 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package strings
 
 import (
@@ -107,6 +103,14 @@ func (b *Builder) WriteByte(c byte) error {
 	b.lastRead = opInvalid
 	b.buf = append(b.buf, c)
 	return nil
+}
+
+// WriteBytes appends the s to b's buffer. The returned error is always nil.
+func (b *Builder) WriteBytes(s []byte) (int, error) {
+	b.copyCheck()
+	b.lastRead = opInvalid
+	b.buf = append(b.buf, s...)
+	return len(s), nil
 }
 
 // WriteRune appends the UTF-8 encoding of Unicode code point r to b's buffer.
